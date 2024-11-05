@@ -83,3 +83,26 @@ This configuration:
 - Enables `slirp` networking support for easier networking configuration.
 
 ---
+
+# Microbenchmark Usage Guide
+
+This guide provides instructions on how to use the `microbenchmark` program and monitor its page fault behavior.
+
+## Prerequisites
+
+- Ensure that the `microbenchmark` binary is compiled and located in the same directory as this script.
+- The configuration file (`config.txt`) should be set up correctly with the necessary parameters.
+
+## Running the Microbenchmark
+
+The `run.sh` script runs the `microbenchmark` program after clearing the page cache. This ensures that each run of the benchmark starts with a clean page cache state.
+
+### `run.sh` Script
+
+```bash
+#!/bin/bash
+
+sudo sync    # Write back data to disk
+echo 3 | sudo tee /proc/sys/vm/drop_caches      # Clear the Page Cache
+
+./microbenchmark
