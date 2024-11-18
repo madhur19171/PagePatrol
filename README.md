@@ -106,3 +106,12 @@ sudo sync    # Write back data to disk
 echo 3 | sudo tee /proc/sys/vm/drop_caches      # Clear the Page Cache
 
 ./microbenchmark
+```
+
+## Running and Compiling eBPF
+
+```bash
+ecc <program name>          # Compile
+sudo ecli run package.json  # Run
+sudo cat /sys/kernel/debug/tracing/trace_pipe   # Output of trace
+```
