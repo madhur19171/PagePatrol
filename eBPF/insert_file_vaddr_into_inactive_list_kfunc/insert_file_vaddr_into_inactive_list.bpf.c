@@ -37,7 +37,7 @@ int BPF_KPROBE(do_unlinkat, int dfd, struct filename *name) {
 
 	pid = bpf_map_lookup_elem(&pid_map, &key);
 	if (!pid) {
-		bpf_printk("Failed to find PID %d\n", *pid);
+		bpf_printk("Failed to find PID\n");
 		return 0;
 	}
 
@@ -50,9 +50,9 @@ int BPF_KPROBE(do_unlinkat, int dfd, struct filename *name) {
 
 	// Call the kfunc to translate VA to PA
 	if (bpf_insert_file_vaddr_into_inactive_list(*pid, *va) == 0) {
-		bpf_printk("Inserted VA: %lx to inactive list for PID: %d\n", *va, pid);
+		bpf_printk("Inserted VA: %lx to inactive list for PID: %d\n", *va, *pid);
 	} else {
-		bpf_printk("Failed to insert VA: %lx to inactive list for PID: %d\n", *va, pid);
+		bpf_printk("Failed to insert VA: %lx to inactive list for PID: %d\n", *va, *pid);
 	}
 
 	return 0;
