@@ -13,8 +13,24 @@
 #include <cstdlib>
 #include <ctime>
 #include <stdexcept>
+#include <bpf/libbpf.h>
+#include <bpf/bpf.h>
 
 #define PAGE_SIZE 4096
+
+#define PID_VA_MAP "/sys/fs/bpf/pid_va_map"
+
+struct pid_va {
+	int PID;
+	unsigned long VA;	// A VA of 0 means that the array entry is Invalid and the
+						// There is no need for adding this to the inactive list
+};
+
+int pid;
+unsigned long va;
+struct pid_va pid_va;
+int pid_va_map_fd;
+int idx;
 
 // Base class for access patterns
 class AccessPattern {
@@ -36,6 +52,14 @@ public:
     void execute(char* mapped_file, size_t num_pages) override {
         for (size_t i = 0; i < num_pages; i += gap) {
             mapped_file[i * PAGE_SIZE] = (mapped_file[i * PAGE_SIZE] + 1) % 256;
+
+            pid_va.VA = (unsigned long)(&mapped_file[i * PAGE_SIZE]);
+            if (bpf_map_update_elem(pid_va_map_fd, &idx, &pid_va, BPF_ANY) < 0) {
+                printf("Failed to update PID VA map for VA(0x%lx)\n", pid_va.VA);
+            } else {
+                idx++;
+                idx %= 16;    // Max size of PID_VA map
+            }
         }
     }
 };
@@ -248,6 +272,18 @@ int main(int argc, char* argv[]) {
     }
     
     print_config(config);
+
+    idx = 0;
+    pid = getpid();
+    printf ("PID: %d\n", pid);
+    pid_va.PID = pid;
+
+    // Open the map
+	pid_va_map_fd = bpf_obj_get(PID_VA_MAP);
+	if (pid_va_map_fd < 0) {
+		perror("Failed to open PID VA map");
+		return 1;
+	}
 
     srand(time(nullptr));
 
