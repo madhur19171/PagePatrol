@@ -21,9 +21,10 @@
 #define PID_VA_MAP "/sys/fs/bpf/pid_va_map"
 
 struct pid_va {
+	int flags;
 	int PID;
 	unsigned long VA;	// A VA of 0 means that the array entry is Invalid and the
-						// There is no need for adding this to the inactive list
+				// There is no need for adding this to the inactive list
 };
 
 int pid;
@@ -54,11 +55,12 @@ public:
             mapped_file[i * PAGE_SIZE] = (mapped_file[i * PAGE_SIZE] + 1) % 256;
 
             pid_va.VA = (unsigned long)(&mapped_file[i * PAGE_SIZE]);
+	    pid_va.flags = 0;
             if (bpf_map_update_elem(pid_va_map_fd, &idx, &pid_va, BPF_ANY) < 0) {
                 printf("Failed to update PID VA map for VA(0x%lx)\n", pid_va.VA);
             } else {
                 idx++;
-                idx %= 16;    // Max size of PID_VA map
+                idx %= 1024;    // Max size of PID_VA map
             }
         }
     }
@@ -117,6 +119,16 @@ public:
         for (size_t i = 0; i < repeats; ++i) {
             size_t random_page = rand() % small_region_pages;
             mapped_file[random_page * PAGE_SIZE] = (mapped_file[random_page * PAGE_SIZE] + 1) % 256;
+
+	    pid_va.VA = (unsigned long)(&mapped_file[random_page * PAGE_SIZE]);
+	    pid_va.flags = 1;
+            if (bpf_map_update_elem(pid_va_map_fd, &idx, &pid_va, BPF_ANY) < 0) {
+                printf("Failed to update PID VA map for VA(0x%lx)\n", pid_va.VA);
+            } else {
+                idx++;
+                idx %= 1024;    // Max size of PID_VA map
+            }
+
         }
     }
 };

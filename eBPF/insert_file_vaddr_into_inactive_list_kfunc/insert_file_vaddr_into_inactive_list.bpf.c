@@ -5,9 +5,10 @@
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
 
-#define MAX_PID_VA_ENTRIES 16
+#define MAX_PID_VA_ENTRIES 1024
 
 struct pid_va {
+	int flags;	// Flag sotres what kind of operation to perform. 0 means evict, 1 means pin
 	int PID;
 	unsigned long VA;	// A VA of 0 means that the array entry is Invalid and the
 						// There is no need for adding this to the inactive list
@@ -24,6 +25,7 @@ struct {
 
 // Declare the kfunc
 extern int bpf_insert_file_vaddr_into_inactive_list(int pid, unsigned long vaddr) __ksym;
+extern int bpf_pin_file_vaddr(int pid, unsigned long vaddr) __ksym;
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
@@ -38,11 +40,20 @@ int BPF_KPROBE(shrink_lruvec, struct lruvec *lruvec, struct scan_control *sc) {
 
 		if (pid_va) {
 			if (pid_va->VA) {
-				// Call the kfunc to add the VA to the inactive list
-				if (bpf_insert_file_vaddr_into_inactive_list(pid_va->PID, pid_va->VA) == 0) {
-					bpf_printk("Inserted VA: %lx to inactive list for PID: %d\n", pid_va->VA, pid_va->PID);
-				} else {
-					bpf_printk("Failed to insert VA: %lx to inactive list for PID: %d\n", pid_va->VA, pid_va->PID);
+				if (pid_va->flags == 0) {
+					// Call the kfunc to add the VA to the inactive list
+					if (bpf_insert_file_vaddr_into_inactive_list(pid_va->PID, pid_va->VA) == 0) {
+						bpf_printk("Inserted VA: %lx to inactive list for PID: %d\n", pid_va->VA, pid_va->PID);
+					} else {
+						bpf_printk("Failed to insert VA: %lx to inactive list for PID: %d\n", pid_va->VA, pid_va->PID);
+					}
+				} else if (pid_va->flags == 1) {
+					// Call the kfunc to pin the VA
+					if (bpf_pin_file_vaddr(pid_va->PID, pid_va->VA) == 0) {
+						bpf_printk("Pinned VA: %lx for PID: %d\n", pid_va->VA, pid_va->PID);
+					} else {
+						bpf_printk("Failed to pin VA: %lx for PID: %d\n", pid_va->VA, pid_va->PID);
+					}	
 				}
 			}
 		}
