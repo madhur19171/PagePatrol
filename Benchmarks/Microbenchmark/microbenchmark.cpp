@@ -15,23 +15,9 @@
 #include <stdexcept>
 #include <bpf/libbpf.h>
 #include <bpf/bpf.h>
+#include "../../API/PagePatrol.h"
 
 #define PAGE_SIZE 4096
-
-#define PID_VA_MAP "/sys/fs/bpf/pid_va_map"
-
-struct pid_va {
-	int flags;
-	int PID;
-	unsigned long VA;	// A VA of 0 means that the array entry is Invalid and the
-				// There is no need for adding this to the inactive list
-};
-
-int pid;
-unsigned long va;
-struct pid_va pid_va;
-int pid_va_map_fd;
-int idx;
 
 // Base class for access patterns
 class AccessPattern {
@@ -54,14 +40,7 @@ public:
         for (size_t i = 0; i < num_pages; i += gap) {
             mapped_file[i * PAGE_SIZE] = (mapped_file[i * PAGE_SIZE] + 1) % 256;
 
-            pid_va.VA = (unsigned long)(&mapped_file[i * PAGE_SIZE]);
-	    pid_va.flags = 0;
-            if (bpf_map_update_elem(pid_va_map_fd, &idx, &pid_va, BPF_ANY) < 0) {
-                printf("Failed to update PID VA map for VA(0x%lx)\n", pid_va.VA);
-            } else {
-                idx++;
-                idx %= 1024;    // Max size of PID_VA map
-            }
+            mark_va_for_eviction(&mapped_file[i * PAGE_SIZE]);
         }
     }
 };
@@ -120,15 +99,7 @@ public:
             size_t random_page = rand() % small_region_pages;
             mapped_file[random_page * PAGE_SIZE] = (mapped_file[random_page * PAGE_SIZE] + 1) % 256;
 
-	    pid_va.VA = (unsigned long)(&mapped_file[random_page * PAGE_SIZE]);
-	    pid_va.flags = 1;
-            if (bpf_map_update_elem(pid_va_map_fd, &idx, &pid_va, BPF_ANY) < 0) {
-                printf("Failed to update PID VA map for VA(0x%lx)\n", pid_va.VA);
-            } else {
-                idx++;
-                idx %= 1024;    // Max size of PID_VA map
-            }
-
+            pin_va(&mapped_file[random_page * PAGE_SIZE]);
         }
     }
 };
@@ -285,17 +256,9 @@ int main(int argc, char* argv[]) {
     
     print_config(config);
 
-    idx = 0;
-    pid = getpid();
-    printf ("PID: %d\n", pid);
-    pid_va.PID = pid;
-
-    // Open the map
-	pid_va_map_fd = bpf_obj_get(PID_VA_MAP);
-	if (pid_va_map_fd < 0) {
-		perror("Failed to open PID VA map");
-		return 1;
-	}
+    if (init_page_patrol() == -1) {
+        return -1;
+    } 
 
     srand(time(nullptr));
 
