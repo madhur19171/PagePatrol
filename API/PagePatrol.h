@@ -53,4 +53,16 @@ inline void pin_va (void * va) {
 	}
 }
 
+inline void unpin_va (void * va) {
+	pid_va.VA = (unsigned long)(va);
+	pid_va.flags = 2;	// Unpinning
+	
+	if (bpf_map_update_elem(pid_va_map_fd, &idx, &pid_va, BPF_ANY) < 0) {
+		printf("Failed to update PID VA map for Pinning VA(0x%lx)\n", pid_va.VA);
+	} else {
+		idx++;
+		idx %= MAX_PID_VA_ENTRIES;    // Max size of PID_VA map
+	}
+}
+
 #endif

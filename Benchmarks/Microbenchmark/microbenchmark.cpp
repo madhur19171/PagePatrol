@@ -17,6 +17,8 @@
 #include <bpf/bpf.h>
 #include "../../API/PagePatrol.h"
 
+#define PAGE_PATROL
+
 #define PAGE_SIZE 4096
 
 // Base class for access patterns
@@ -39,8 +41,10 @@ public:
     void execute(char* mapped_file, size_t num_pages) override {
         for (size_t i = 0; i < num_pages; i += gap) {
             mapped_file[i * PAGE_SIZE] = (mapped_file[i * PAGE_SIZE] + 1) % 256;
-
-            mark_va_for_eviction(&mapped_file[i * PAGE_SIZE]);
+#ifdef PAGE_PATROL
+            // mark_va_for_eviction(&mapped_file[i * PAGE_SIZE]);
+            pin_va(&mapped_file[i * PAGE_SIZE]);
+#endif
         }
     }
 };
@@ -78,6 +82,10 @@ public:
         for (size_t start = 0; start < num_pages; start += stride) {
             for (size_t i = start; i < start + window && i < num_pages; ++i) {
                 mapped_file[i * PAGE_SIZE] = (mapped_file[i * PAGE_SIZE] + 1) % 256;
+
+#ifdef PAGE_PATROL
+            unpin_va(&mapped_file[i * PAGE_SIZE]);
+#endif
             }
         }
     }
@@ -98,8 +106,9 @@ public:
         for (size_t i = 0; i < repeats; ++i) {
             size_t random_page = rand() % small_region_pages;
             mapped_file[random_page * PAGE_SIZE] = (mapped_file[random_page * PAGE_SIZE] + 1) % 256;
-
+#ifdef PAGE_PATROL
             pin_va(&mapped_file[random_page * PAGE_SIZE]);
+#endif
         }
     }
 };
@@ -256,9 +265,12 @@ int main(int argc, char* argv[]) {
     
     print_config(config);
 
+#ifdef PAGE_PATROL
     if (init_page_patrol() == -1) {
+        printf("Failed to initialize Page Patrol\n");
         return -1;
     } 
+#endif
 
     srand(time(nullptr));
 

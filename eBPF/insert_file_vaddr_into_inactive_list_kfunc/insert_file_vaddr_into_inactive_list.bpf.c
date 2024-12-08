@@ -9,7 +9,7 @@
 
 // Map for input: user-space process provides the virtual address
 struct {
-	__uint(type, BPF_MAP_TYPE_ARRAY);
+	__uint(type, BPF_MAP_TYPE_HASH);
 	__uint(max_entries, MAX_PID_VA_ENTRIES);
 	__type(key, __u32);
 	__type(value, struct pid_va);
@@ -19,6 +19,7 @@ struct {
 // Declare the kfunc
 extern int bpf_insert_file_vaddr_into_inactive_list(int pid, unsigned long vaddr) __ksym;
 extern int bpf_pin_file_vaddr(int pid, unsigned long vaddr) __ksym;
+extern int bpf_unpin_file_vaddr(int pid, unsigned long vaddr) __ksym;
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
@@ -45,10 +46,19 @@ int BPF_KPROBE(shrink_lruvec, struct lruvec *lruvec, struct scan_control *sc) {
 					if (bpf_pin_file_vaddr(pid_va->PID, pid_va->VA) == 0) {
 						// bpf_printk("Pinned VA: %lx for PID: %d\n", pid_va->VA, pid_va->PID);
 					} else {
-						// bpf_printk("Failed to pin VA: %lx for PID: %d\n", pid_va->VA, pid_va->PID);
+						bpf_printk("Failed to pin VA: %lx for PID: %d\n", pid_va->VA, pid_va->PID);
+					}	
+				} else if (pid_va->flags == 2) {
+					// Call the kfunc to unpin the VA
+					if (bpf_unpin_file_vaddr(pid_va->PID, pid_va->VA) == 0) {
+						// bpf_printk("Unpinned VA: %lx for PID: %d\n", pid_va->VA, pid_va->PID);
+					} else {
+						bpf_printk("Failed to unpin VA: %lx for PID: %d\n", pid_va->VA, pid_va->PID);
 					}	
 				}
 			}
+
+			bpf_map_delete_elem(&pid_va_map, &__idx);
 		}
 	}
 
