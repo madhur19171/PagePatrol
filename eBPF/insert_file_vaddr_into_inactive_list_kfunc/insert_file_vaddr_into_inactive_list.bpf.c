@@ -23,8 +23,8 @@ extern int bpf_unpin_file_vaddr(int pid, unsigned long vaddr) __ksym;
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
-SEC("kprobe/shrink_lruvec")
-int BPF_KPROBE(shrink_lruvec, struct lruvec *lruvec, struct scan_control *sc) {
+SEC("kprobe/pid_nr_ns")
+int BPF_KPROBE(pid_nr_ns, struct pid *pid, struct pid_namespace *ns) {
 	struct pid_va *pid_va;
 
 	for (int i = 0; i < MAX_PID_VA_ENTRIES; i++) {

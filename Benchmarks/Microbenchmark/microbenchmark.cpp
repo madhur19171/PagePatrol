@@ -43,7 +43,7 @@ public:
             mapped_file[i * PAGE_SIZE] = (mapped_file[i * PAGE_SIZE] + 1) % 256;
 #ifdef PAGE_PATROL
             // mark_va_for_eviction(&mapped_file[i * PAGE_SIZE]);
-            pin_va(&mapped_file[i * PAGE_SIZE]);
+            // pin_va(&mapped_file[i * PAGE_SIZE]);
 #endif
         }
     }
@@ -103,8 +103,9 @@ public:
 
     void execute(char* mapped_file, size_t num_pages) override {
         size_t small_region_pages = (num_pages * region_size) / 100;
-        for (size_t i = 0; i < repeats; ++i) {
-            size_t random_page = rand() % small_region_pages;
+        for (size_t i = 0; i < small_region_pages; ++i) {
+            // size_t random_page = rand() % small_region_pages;
+            size_t random_page = i;
             mapped_file[random_page * PAGE_SIZE] = (mapped_file[random_page * PAGE_SIZE] + 1) % 256;
 #ifdef PAGE_PATROL
             pin_va(&mapped_file[random_page * PAGE_SIZE]);

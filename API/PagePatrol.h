@@ -29,7 +29,7 @@ inline int init_page_patrol () {
 	return 0;
 }
 
-inline void mark_va_for_eviction (void * va) {
+inline int mark_va_for_eviction (void * va) {
 	pid_va.VA = (unsigned long)(va);
 	pid_va.flags = 0;	// Eviction
 	
@@ -39,9 +39,11 @@ inline void mark_va_for_eviction (void * va) {
 		idx++;
 		idx %= MAX_PID_VA_ENTRIES;    // Max size of PID_VA map
 	}
+
+	return getpid();
 }
 
-inline void pin_va (void * va) {
+inline int pin_va (void * va) {
 	pid_va.VA = (unsigned long)(va);
 	pid_va.flags = 1;	// Pinning
 	
@@ -51,9 +53,11 @@ inline void pin_va (void * va) {
 		idx++;
 		idx %= MAX_PID_VA_ENTRIES;    // Max size of PID_VA map
 	}
+
+	return getpid();
 }
 
-inline void unpin_va (void * va) {
+inline int unpin_va (void * va) {
 	pid_va.VA = (unsigned long)(va);
 	pid_va.flags = 2;	// Unpinning
 	
@@ -63,6 +67,8 @@ inline void unpin_va (void * va) {
 		idx++;
 		idx %= MAX_PID_VA_ENTRIES;    // Max size of PID_VA map
 	}
+
+	return getpid();
 }
 
 #endif
