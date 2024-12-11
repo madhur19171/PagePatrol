@@ -10,6 +10,9 @@ PagePatrol allows users to fine-tune page age caching policies on their Linux sy
 
 ## Setting Up the Linux Kernel
 
+### Cloning the repo
+The PagePatrol repo contains the linux fork for PagePatrol. Clone the PagePatrol repo with recursive flag to clone the linux repo as well. As the debian image has a limited size, make usre to use depth parameter to avoid cloning all the commits.
+
 ### Configuration
 
 1. **Use Default Configuration:**
@@ -91,7 +94,7 @@ This guide provides instructions on how to use the `microbenchmark` program and 
 ## Prerequisites
 
 - Ensure that the `microbenchmark` binary is compiled and located in the same directory as this script.
-- The configuration file (`config.txt`) should be set up correctly with the necessary parameters.
+- The configuration file (`config.cfg`) should be set up correctly with the necessary parameters.
 
 ## Running the Microbenchmark
 
@@ -108,10 +111,35 @@ echo 3 | sudo tee /proc/sys/vm/drop_caches      # Clear the Page Cache
 ./microbenchmark
 ```
 
+The Microbenchmark directory contains the microbenchmark, and some scripts.
+The Microbenchmark can be compiled using the following command:
+```bash
+g++ -o microbenchmark microbenchmark.cpp -lbpf
+```
+As the microbenchmark uses eBP maps, -lbpf is necessary to be passed. 
+
+### Configuration
+The config.cfg file contains the configuration for running the microbenchmark. It defines the name of the file to use for processing ("bigfile"), the size of the file, access pattern and configurations for the access patterns
+
+### vmtouch.sh
+vmtouch is a program that can be used to access and monitor files. it can touch file and evict file pages. It can also show what sections of a file are cached in page cache and what sections are evicted. This script provides a neat way of visualising the memory residency of the file over time. 
+
 ## Running and Compiling eBPF
 
 ```bash
 ecc <program name>          # Compile
 sudo ecli run package.json  # Run
 sudo cat /sys/kernel/debug/tracing/trace_pipe   # Output of trace
+```
+
+### eBPF API
+Page Patrol's API uses the eBPF program inside the folder eBPF/insert_file_vaddr_into_inactive_list_kfunc/. It can be compiled using ```ecc insert_file_vaddr_into_inactive_list.bpf.c``` and loaded with ```sudo ecli package.json```
+
+## Creating a bigfile
+
+The microbenchmark mmaps a 1GB file named **bigfile**
+The run.sh and vmtouch.sh scripts expect the bigfile to be present in the Benchmark/Microbenchmark directory
+You can use the following command in Microbenchmark directory to create a big file
+```bash
+dd if=/dev/urandom of=bigfile bs=1M count=1K
 ```
