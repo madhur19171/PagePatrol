@@ -28,7 +28,8 @@ inline int init_page_patrol () {
 
 	// write the index to map
 	int zero = 0;
-	if (bpf_map_update_elem(pid_va_map_fd, &zero, &idx, BPF_ANY) < 0) {
+	pid_va.flags = idx; // we store the index in the flags
+	if (bpf_map_update_elem(pid_va_map_fd, &zero, &pid_va, BPF_ANY) < 0) {
 		printf("Failed to update PID VA map for index %d)\n", idx);
 		return -1;
 	}
@@ -53,8 +54,9 @@ inline int mark_va_for_eviction (void * va) {
 
 	// write the new index
 	int zero = 0;
-	if (bpf_map_update_elem(pid_va_map_fd, &zero, &idx, BPF_ANY) < 0) {
-		printf("Failed to update index %d)\n", idx);
+	pid_va.flags = idx; // we store the index in the flags
+	if (bpf_map_update_elem(pid_va_map_fd, &zero, &pid_va, BPF_ANY) < 0) {
+		printf("Failed to update PID VA map for index %d)\n", idx);
 		return -1;
 	}
 
@@ -77,8 +79,9 @@ inline int pin_va (void * va) {
 
 	// write the new index
 	int zero = 0;
-	if (bpf_map_update_elem(pid_va_map_fd, &zero, &idx, BPF_ANY) < 0) {
-		printf("Failed to update index %d)\n", idx);
+	pid_va.flags = idx; // we store the index in the flags
+	if (bpf_map_update_elem(pid_va_map_fd, &zero, &pid_va, BPF_ANY) < 0) {
+		printf("Failed to update PID VA map for index %d)\n", idx);
 		return -1;
 	}
 
@@ -101,8 +104,9 @@ inline int unpin_va (void * va) {
 
 	// write the new index
 	int zero = 0;
-	if (bpf_map_update_elem(pid_va_map_fd, &zero, &idx, BPF_ANY) < 0) {
-		printf("Failed to update index %d)\n", idx);
+	pid_va.flags = idx; // we store the index in the flags
+	if (bpf_map_update_elem(pid_va_map_fd, &zero, &pid_va, BPF_ANY) < 0) {
+		printf("Failed to update PID VA map for index %d)\n", idx);
 		return -1;
 	}
 
@@ -125,11 +129,11 @@ inline int access_va (void * va) {
 
 	// write the new index
 	int zero = 0;
-	if (bpf_map_update_elem(pid_va_map_fd, &zero, &idx, BPF_ANY) < 0) {
-		printf("Failed to update index %d)\n", idx);
+	pid_va.flags = idx; // we store the index in the flags
+	if (bpf_map_update_elem(pid_va_map_fd, &zero, &pid_va, BPF_ANY) < 0) {
+		printf("Failed to update PID VA map for index %d)\n", idx);
 		return -1;
 	}
-
 
 	return 0;
 }
