@@ -26,14 +26,15 @@ SEC("kprobe/pid_nr_ns")
 int BPF_KPROBE(pid_nr_ns, struct pid *pid, struct pid_namespace *ns) {
 	struct pid_va *pid_va;
 
-	// first get the previous index
+	// first get the index of the process
 	int zero = 0;
-	int idxProcess = 0;
 	pid_va = bpf_map_lookup_elem(&pid_va_map, &zero);
-	if (pid_va) {
-		idxProcess = pid_va->flags; // that is where we store the index
+	if (!pid_va) {
+		return -1;
 	}
+	int idxProcess = pid_va->flags; // that is where we store the index
 
+	// now iterate over the API calls
 	int idx = idxProcess;
 	do {
 		pid_va = bpf_map_lookup_elem(&pid_va_map, &idx);
@@ -45,11 +46,11 @@ int BPF_KPROBE(pid_nr_ns, struct pid *pid, struct pid_namespace *ns) {
 				bpf_printk("Receied endpoint pin\n");
 			} else if (pid_va->flags == 2) {
 				bpf_printk("Receied endpoint unpin\n");
-			} else if (pid_va_flags == 3) {
+			} else if (pid_va->flags == 3) {
 				bpf_printk("Receied endpoint mark access\n");
 			}
 
-			bpf_map_delete_elem(&pid_va_map, &__idx);
+			bpf_map_delete_elem(&pid_va_map, &idx);
 		}
 
 		idx++;
