@@ -39,19 +39,29 @@ public:
     }
 
     void execute(char* mapped_file, size_t num_pages) override {
-
+        
         // we assume the disk is divided in 4 equal segments
         // so we start at the first quarter until the end
-        size_t start_i = (num_pages / 4);
+        size_t start_i = (num_pages / 4) + 1;
+        size_t size_overlap = 3; // we will do runs of 3 reads
 
-        for (size_t i = start_i; i < num_pages; i += gap) {
+        for (size_t i = start_i; i <= num_pages - size_overlap; i += gap) {
 
-            mapped_file[i * PAGE_SIZE] = (mapped_file[i * PAGE_SIZE] + 1) % 256;
+            for (size_t j = i; j < i + size_overlap; j++) {
+                mapped_file[j * PAGE_SIZE] = (mapped_file[j * PAGE_SIZE] + 1) % 256;
+            }
 
 #ifdef PAGE_PATROL
+            // only evict the current block
             mark_va_for_eviction(&mapped_file[i * PAGE_SIZE]);
-#endif
 
+            // if you are at the last iteration of the loop, you must also evict the last blocks
+            if (i == num_pages - size_overlap) {
+                for (size_t j = i + 1; j < i + size_overlap; j++) {
+                    mark_va_for_eviction(&mapped_file[j * PAGE_SIZE]);
+                }
+            }
+#endif
         }
     }
 };

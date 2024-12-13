@@ -1,10 +1,10 @@
 #define BPF_NO_GLOBAL_DATA
-#include <linux/bpf.h>
+#include "vmlinux.h"
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 #include <bpf/bpf_core_read.h>
 
-#include "../API/common.h"
+#include "../../API/common.h"
 
 // Map for input: user-space process provides the virtual address
 struct {
@@ -36,7 +36,9 @@ int BPF_KPROBE(pid_nr_ns, struct pid *pid, struct pid_namespace *ns) {
 
 	// now iterate over the API calls
 	int idx = idxProcess;
-	do {
+
+	for (int times = 1; times < MAX_PID_VA_ENTRIES; times++) {
+
 		pid_va = bpf_map_lookup_elem(&pid_va_map, &idx);
 
 		if (pid_va) {
@@ -58,7 +60,6 @@ int BPF_KPROBE(pid_nr_ns, struct pid *pid, struct pid_namespace *ns) {
 			idx = 1; // we skip the first as that is where the index is stored
 		}
 	}
-	while (idx != idxProcess);
 
 	return 0;
 }
