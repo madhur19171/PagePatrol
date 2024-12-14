@@ -17,9 +17,11 @@
 #include <bpf/bpf.h>
 #include "../../API/PagePatrol.h"
 
-#define PAGE_PATROL
+#define NUM_ITERATIONS 100
 
 #define PAGE_SIZE 4096
+
+bool pagePatrolEnable = false;
 
 // Base class for access patterns
 class AccessPattern {
@@ -51,17 +53,17 @@ public:
                 mapped_file[j * PAGE_SIZE] = (mapped_file[j * PAGE_SIZE] + 1) % 256;
             }
 
-#ifdef PAGE_PATROL
-            // only evict the current block
-            mark_va_for_eviction(&mapped_file[i * PAGE_SIZE]);
+            if (pagePatrolEnable) {
+                // only evict the current block
+                mark_va_for_eviction(&mapped_file[i * PAGE_SIZE]);
 
-            // if you are at the last iteration of the loop, you must also evict the last blocks
-            if (i == num_pages - size_overlap) {
-                for (size_t j = i + 1; j < i + size_overlap; j++) {
-                    mark_va_for_eviction(&mapped_file[j * PAGE_SIZE]);
+                // if you are at the last iteration of the loop, you must also evict the last blocks
+                if (i == num_pages - size_overlap) {
+                    for (size_t j = i + 1; j < i + size_overlap; j++) {
+                        mark_va_for_eviction(&mapped_file[j * PAGE_SIZE]);
+                    }
                 }
             }
-#endif
         }
     }
 };
@@ -99,10 +101,6 @@ public:
         for (size_t start = 0; start < num_pages; start += stride) {
             for (size_t i = start; i < start + window && i < num_pages; ++i) {
                 mapped_file[i * PAGE_SIZE] = (mapped_file[i * PAGE_SIZE] + 1) % 256;
-
-#ifdef PAGE_PATROL
-            unpin_va(&mapped_file[i * PAGE_SIZE]);
-#endif
             }
         }
     }
@@ -129,9 +127,9 @@ public:
             size_t random_page = rand() % small_region_pages;
             mapped_file[random_page * PAGE_SIZE] = (mapped_file[random_page * PAGE_SIZE] + 1) % 256;
 
-#ifdef PAGE_PATROL
-            pin_va(&mapped_file[random_page * PAGE_SIZE]);
-#endif
+            if (pagePatrolEnable) {
+                pin_va(&mapped_file[random_page * PAGE_SIZE]);
+            }
         }
     }
 };
@@ -141,6 +139,8 @@ struct Config {
     std::string file_name;
     size_t file_size;
     std::vector<std::string> execution_sequence;
+    bool pagePatrol;
+    int iterations;
     size_t pattern1_gap = 64;
     size_t pattern2_repeats = 10000;
     size_t pattern2_range = 50;
@@ -156,6 +156,7 @@ std::string trim(const std::string& str) {
     size_t last = str.find_last_not_of(" \t");
     return (first == std::string::npos || last == std::string::npos) ? "" : str.substr(first, last - first + 1);
 }
+
 
 bool load_config(const std::string& config_file, Config& config) {
     std::ifstream infile(config_file);
@@ -194,6 +195,10 @@ bool load_config(const std::string& config_file, Config& config) {
                     while (sequence_stream >> pattern_name) {
                         config.execution_sequence.push_back(pattern_name);
                     }
+                } else if (key == "PagePatrol") {
+                    config.pagePatrol = std::stoull(value) == 1;
+                } else if (key == "iterations") {
+                    config.iterations = std::stoi (value);
                 }
             }
         } else {
@@ -230,6 +235,8 @@ void print_config(const Config& config) {
     // General settings
     std::cout << "  File Name: " << config.file_name << std::endl;
     std::cout << "  File Size: " << config.file_size << " bytes" << std::endl;
+    std::cout << "  Page Patrol: " << config.pagePatrol << std::endl;
+    std::cout << "  Iterations: " << config.iterations << std::endl;
     
     // Execution sequence
     std::cout << "  Execution Sequence: ";
@@ -261,7 +268,7 @@ void print_config(const Config& config) {
 // Execute access patterns in the specified sequence
 void run_access_patterns(char* mapped_file, size_t num_pages, const Config& config,
                          const std::unordered_map<std::string, AccessPattern*>& patterns_map) {
-    while (true) {
+    for (int i = 0; i < config.iterations; i++) {
         for (const auto& pattern_name : config.execution_sequence) {
             auto it = patterns_map.find(pattern_name);  // Look up the pattern by name
             if (it != patterns_map.end()) {
@@ -288,12 +295,14 @@ int main(int argc, char* argv[]) {
     
     print_config(config);
 
-#ifdef PAGE_PATROL
-    if (init_page_patrol() == -1) {
-        printf("Failed to initialize Page Patrol\n");
-        return -1;
-    } 
-#endif
+    pagePatrolEnable = config.pagePatrol;
+
+    if (pagePatrolEnable) {
+        if (init_page_patrol() == -1) {
+            printf("Failed to initialize Page Patrol\n");
+            return -1;
+        } 
+    }
 
     srand(time(nullptr));
 
