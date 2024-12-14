@@ -5,6 +5,9 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include "../../API/PagePatrol.h"
+
+#define PAGE_PATROL
 
 // Define the maximum number of nodes (adjust as needed)
 #define NUM_NODES 1000
@@ -93,6 +96,9 @@ void randomWalk(Graph* graph, int startNode, int steps, char* data) {
 
         printf("Step %d: Node %d\n", i + 1, currentNode);
 
+#ifdef PAGE_PATROL
+        access_va(&data[BLOCK_SIZE * currentNode]);
+#endif
         // simulating disk access for that node
         printf("content node: %d\n", data[BLOCK_SIZE * currentNode]);
 
@@ -169,6 +175,13 @@ void *readNodeContent(const char* contentFileName, size_t *file_size) {
 
 // Main function
 int main() {
+
+#ifdef PAGE_PATROL
+    if (init_page_patrol() == -1) {
+        printf("Failed to initialize Page Patrol\n");
+        return -1;
+    } 
+#endif
 
     // open the graph file
     const char* graphFileName = "graph.txt";

@@ -13,15 +13,40 @@
 #include <cstdlib>
 #include <ctime>
 #include <stdexcept>
-#include <bpf/libbpf.h>
-#include <bpf/bpf.h>
-#include "../../API/PagePatrol.h"
-
-#define NUM_ITERATIONS 100
 
 #define PAGE_SIZE 4096
 
 bool pagePatrolEnable = false;
+
+void getPageFaults() {
+    std::ifstream procStat("/proc/self/stat");
+    if (!procStat.is_open()) {
+        std::cerr << "Failed to open /proc/self/stat" << std::endl;
+        return;
+    }
+
+    std::string statLine;
+    std::getline(procStat, statLine);
+    procStat.close();
+
+    std::istringstream statStream(statLine);
+    std::string temp;
+    // 12 is major page faults
+    for (int i = 0; i < 9; ++i) {
+        statStream >> temp; // Skip the first 11 fields
+    }
+
+    long pageFaultsMinor = 0;
+    statStream >> pageFaultsMinor; // Major page faults (field 12 in /proc/self/stat)
+
+    statStream >> temp;
+
+    long pageFaultsMajor = 0;
+    statStream >> pageFaultsMajor; // Major page faults (field 12 in /proc/self/stat)
+
+    std::cout << "Minor Page Faults BEFORE: " << pageFaultsMinor << std::endl;
+    std::cout << "Major Page Faults BEFORE: " << pageFaultsMajor << std::endl;
+}
 
 // Base class for access patterns
 class AccessPattern {
@@ -41,29 +66,28 @@ public:
     }
 
     void execute(char* mapped_file, size_t num_pages) override {
+        getPageFaults();
         
         // we assume the disk is divided in 4 equal segments
         // so we start at the first quarter until the end
         size_t start_i = (num_pages / 4) + 1;
         size_t size_overlap = 3; // we will do runs of 3 reads
 
-        for (size_t i = start_i; i <= num_pages - size_overlap; i += gap) {
+        for (size_t i = 0; i < num_pages - 1; i += gap) {
 
-            for (size_t j = i; j < i + size_overlap; j++) {
-                mapped_file[j * PAGE_SIZE] = (mapped_file[j * PAGE_SIZE] + 1) % 256;
-            }
+            mapped_file[i * PAGE_SIZE] = (mapped_file[i * PAGE_SIZE] + i) % 256;
 
-            if (pagePatrolEnable) {
-                // only evict the current block
-                mark_va_for_eviction(&mapped_file[i * PAGE_SIZE]);
+            // if (pagePatrolEnable) {
+            //     // only evict the current block
+            //     mark_va_for_eviction(&mapped_file[i * PAGE_SIZE]);
 
-                // if you are at the last iteration of the loop, you must also evict the last blocks
-                if (i == num_pages - size_overlap) {
-                    for (size_t j = i + 1; j < i + size_overlap; j++) {
-                        mark_va_for_eviction(&mapped_file[j * PAGE_SIZE]);
-                    }
-                }
-            }
+            //     // if you are at the last iteration of the loop, you must also evict the last blocks
+            //     if (i == num_pages - size_overlap) {
+            //         for (size_t j = i + 1; j < i + size_overlap; j++) {
+            //             mark_va_for_eviction(&mapped_file[j * PAGE_SIZE]);
+            //         }
+            //     }
+            // }
         }
     }
 };
@@ -117,6 +141,7 @@ public:
     }
 
     void execute(char* mapped_file, size_t num_pages) override {
+        getPageFaults();
 
         // again, we assume that the disk is divided in 4,
         // and here we only access the first quarter 
@@ -127,9 +152,9 @@ public:
             size_t random_page = rand() % small_region_pages;
             mapped_file[random_page * PAGE_SIZE] = (mapped_file[random_page * PAGE_SIZE] + 1) % 256;
 
-            if (pagePatrolEnable) {
-                pin_va(&mapped_file[random_page * PAGE_SIZE]);
-            }
+            // if (pagePatrolEnable) {
+            //     pin_va(&mapped_file[random_page * PAGE_SIZE]);
+            // }
         }
     }
 };
@@ -297,12 +322,12 @@ int main(int argc, char* argv[]) {
 
     pagePatrolEnable = config.pagePatrol;
 
-    if (pagePatrolEnable) {
-        if (init_page_patrol() == -1) {
-            printf("Failed to initialize Page Patrol\n");
-            return -1;
-        } 
-    }
+    // if (pagePatrolEnable) {
+    //     if (init_page_patrol() == -1) {
+    //         printf("Failed to initialize Page Patrol\n");
+    //         return -1;
+    //     } 
+    // }
 
     srand(time(nullptr));
 
