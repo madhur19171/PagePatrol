@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <sys/resource.h>
 #include <cctype>
 #include <iostream>
 #include <iomanip> 
@@ -17,9 +18,52 @@
 #include <bpf/bpf.h>
 #include "../../API/PagePatrol.h"
 
-#define PAGE_PATROL
-
 #define PAGE_SIZE 4096
+
+bool pagePatrolEnable = false;
+
+std::ofstream logFile;
+int logIndex = 0; // Initialize log index
+size_t currentIter = 0;
+
+// Function to initialize the log file
+void initializeLogFile(const std::string &fileName) {
+    // Open the file in write mode to initialize it
+    logFile.open(fileName, std::ios::out | std::ios::trunc);
+    if (!logFile.is_open()) {
+        std::cerr << "Failed to open log file: " << fileName << std::endl;
+        exit(1);
+    }
+
+    // Write the header line to the log file
+    logFile << "Index,Message,Minor Page Faults,Major Page Faults" << std::endl;
+}
+
+// Function to log the page faults to the file
+void logPageFaults(const std::string &message) {
+    if (!logFile.is_open()) {
+        std::cerr << "Log file is not open. Did you call initializeLogFile()?" << std::endl;
+        return;
+    }
+
+    // Get the resource usage for the calling process
+    struct rusage usage;
+    if (getrusage(RUSAGE_SELF, &usage) != 0) {
+        std::cerr << "Failed to get resource usage." << std::endl;
+        return;
+    }
+
+    // Log the data to the file
+    logFile << logIndex++ << "," << message << "," << usage.ru_minflt << "," << usage.ru_majflt << std::endl;
+}
+
+// Don't forget to close the log file when done
+void closeLogFile() {
+    if (logFile.is_open()) {
+        logFile.close();
+    }
+}
+
 
 // Base class for access patterns
 class AccessPattern {
@@ -41,10 +85,10 @@ public:
     void execute(char* mapped_file, size_t num_pages) override {
         for (size_t i = 0; i < num_pages; i += gap) {
             mapped_file[i * PAGE_SIZE] = (mapped_file[i * PAGE_SIZE] + 1) % 256;
-#ifdef PAGE_PATROL
-            // mark_va_for_eviction(&mapped_file[i * PAGE_SIZE]);
-            // pin_va(&mapped_file[i * PAGE_SIZE]);
-#endif
+
+            if (pagePatrolEnable) {
+                mark_va_for_deactivation(&mapped_file[i * PAGE_SIZE]);
+            }
         }
     }
 };
@@ -83,9 +127,9 @@ public:
             for (size_t i = start; i < start + window && i < num_pages; ++i) {
                 mapped_file[i * PAGE_SIZE] = (mapped_file[i * PAGE_SIZE] + 1) % 256;
 
-#ifdef PAGE_PATROL
-            unpin_va(&mapped_file[i * PAGE_SIZE]);
-#endif
+                if (pagePatrolEnable) {
+                    mark_va_for_activation(&mapped_file[i * PAGE_SIZE]);
+                }
             }
         }
     }
@@ -96,20 +140,23 @@ class SmallRegionRandomAccess : public AccessPattern {
 public:
     size_t repeats;
     size_t region_size; // Percentage of file to access
+    size_t unpin_after_iter;
 
-    SmallRegionRandomAccess(size_t repeats, size_t region_size) : repeats(repeats), region_size(region_size) {
+    SmallRegionRandomAccess(size_t repeats, size_t region_size, int unpin_after_iter) : repeats(repeats), region_size(region_size), unpin_after_iter(unpin_after_iter) {
         name = "SmallRegionRandomAccess";
     }
 
     void execute(char* mapped_file, size_t num_pages) override {
         size_t small_region_pages = (num_pages * region_size) / 100;
-        for (size_t i = 0; i < small_region_pages; ++i) {
-            // size_t random_page = rand() % small_region_pages;
-            size_t random_page = i;
+        for (size_t i = 0; i < repeats; ++i) {
+            size_t random_page = rand() % small_region_pages;
             mapped_file[random_page * PAGE_SIZE] = (mapped_file[random_page * PAGE_SIZE] + 1) % 256;
-#ifdef PAGE_PATROL
-            pin_va(&mapped_file[random_page * PAGE_SIZE]);
-#endif
+            if (pagePatrolEnable) {
+                if (currentIter > unpin_after_iter)
+                    unpin_va(&mapped_file[random_page * PAGE_SIZE]);
+                else 
+                    pin_va(&mapped_file[random_page * PAGE_SIZE]);
+            }
         }
     }
 };
@@ -119,6 +166,9 @@ struct Config {
     std::string file_name;
     size_t file_size;
     std::vector<std::string> execution_sequence;
+    bool pagePatrol;
+    size_t iterations;
+    std::string pfLogFileName;
     size_t pattern1_gap = 64;
     size_t pattern2_repeats = 10000;
     size_t pattern2_range = 50;
@@ -126,6 +176,7 @@ struct Config {
     size_t pattern3_stride = 1024;
     size_t pattern4_repeats = 10000;
     size_t pattern4_region_size = 1;
+    size_t pattern4_unpin_after_iter = 1000000;
 };
 
 // Helper function to trim whitespace from the beginning and end of a string
@@ -172,6 +223,12 @@ bool load_config(const std::string& config_file, Config& config) {
                     while (sequence_stream >> pattern_name) {
                         config.execution_sequence.push_back(pattern_name);
                     }
+                } else if (key == "PagePatrol") {
+                    config.pagePatrol = std::stoull(value) == 1;
+                } else if (key == "iterations") {
+                    config.iterations = std::stoul (value);
+                } else if (key == "PF_Log_File_Name") {
+                    config.pfLogFileName = value;
                 }
             }
         } else {
@@ -191,6 +248,7 @@ bool load_config(const std::string& config_file, Config& config) {
                 } else if (current_section == "SmallRegionRandomAccess") {
                     if (key == "repeats") config.pattern4_repeats = std::stoul(value);
                     else if (key == "region_size") config.pattern4_region_size = std::stoul(value);
+                    else if (key == "unpin_after_iter") config.pattern4_unpin_after_iter = std::stoul(value);
                 }
             }
         }
@@ -208,6 +266,9 @@ void print_config(const Config& config) {
     // General settings
     std::cout << "  File Name: " << config.file_name << std::endl;
     std::cout << "  File Size: " << config.file_size << " bytes" << std::endl;
+    std::cout << "  Page Patrol: " << config.pagePatrol << std::endl;
+    std::cout << "  Iterations: " << config.iterations << std::endl;
+    std::cout << "  Page Fault Log File Name: " << config.pfLogFileName << std::endl;
     
     // Execution sequence
     std::cout << "  Execution Sequence: ";
@@ -233,19 +294,23 @@ void print_config(const Config& config) {
     std::cout << "  [SmallRegionRandomAccess]" << std::endl;
     std::cout << "    repeats: " << config.pattern4_repeats << std::endl;
     std::cout << "    region_size: " << config.pattern4_region_size << " %" << std::endl;
+    std::cout << "    unpin_after_iter: " << config.pattern4_unpin_after_iter << std::endl;
 }
 
 
 // Execute access patterns in the specified sequence
 void run_access_patterns(char* mapped_file, size_t num_pages, const Config& config,
                          const std::unordered_map<std::string, AccessPattern*>& patterns_map) {
-    while (true) {
+    for (currentIter = 0; currentIter < config.iterations; currentIter++)
+    {
         for (const auto& pattern_name : config.execution_sequence) {
             auto it = patterns_map.find(pattern_name);  // Look up the pattern by name
             if (it != patterns_map.end()) {
                 AccessPattern* pattern = it->second;
                 std::cout << "Executing " << pattern->name << std::endl;
                 pattern->execute(mapped_file, num_pages);  // Execute the pattern
+
+                logPageFaults(pattern->name);
             } else {
                 std::cerr << "Unknown pattern: " << pattern_name << std::endl;
             }
@@ -266,12 +331,23 @@ int main(int argc, char* argv[]) {
     
     print_config(config);
 
-#ifdef PAGE_PATROL
-    if (init_page_patrol() == -1) {
-        printf("Failed to initialize Page Patrol\n");
-        return -1;
-    } 
-#endif
+    pagePatrolEnable = config.pagePatrol != 0;
+
+    if (pagePatrolEnable) {
+        config.pfLogFileName += "_pp.log";  // Append _pp to page_fault log file if Page Patrol is enabled
+    } else {
+        config.pfLogFileName += ".log";
+    }
+
+    // Initialize the log file
+    initializeLogFile(config.pfLogFileName);
+
+    if (pagePatrolEnable) {
+        if (init_page_patrol() == -1) {
+            printf("Failed to initialize Page Patrol\n");
+            return -1;
+        } 
+    }
 
     srand(time(nullptr));
 
@@ -294,7 +370,7 @@ int main(int argc, char* argv[]) {
     SequentialAccessWithGaps sequential_access(config.pattern1_gap);
     RandomOlderPageReaccess random_reaccess(config.pattern2_repeats, config.pattern2_range);
     CyclicBurstsAccess cyclic_bursts(config.pattern3_window, config.pattern3_stride);
-    SmallRegionRandomAccess small_region_random(config.pattern4_repeats, config.pattern4_region_size);
+    SmallRegionRandomAccess small_region_random(config.pattern4_repeats, config.pattern4_region_size, config.pattern4_unpin_after_iter);
 
     // Store pointers to the access patterns in a map
     std::unordered_map<std::string, AccessPattern*> patterns_map = {
@@ -312,6 +388,8 @@ int main(int argc, char* argv[]) {
         perror("Memory unmap error");
     }
     close(fd);
+
+    closeLogFile();
 
     return 0;
 }

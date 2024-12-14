@@ -17,14 +17,15 @@ struct {
 } pid_va_map SEC(".maps");
 
 // Declare the kfunc
-extern int bpf_insert_file_vaddr_into_inactive_list(int pid, unsigned long vaddr) __ksym;
+extern int bpf_deactivate_file_vaddr(int pid, unsigned long vaddr) __ksym;
+extern int bpf_activate_file_vaddr(int pid, unsigned long vaddr) __ksym;
 extern int bpf_pin_file_vaddr(int pid, unsigned long vaddr) __ksym;
 extern int bpf_unpin_file_vaddr(int pid, unsigned long vaddr) __ksym;
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
-SEC("kprobe/pid_nr_ns")
-int BPF_KPROBE(pid_nr_ns, struct pid *pid, struct pid_namespace *ns) {
+SEC("kprobe/__task_pid_nr_ns")
+int BPF_KPROBE(__task_pid_nr_ns, struct task_struct *task, enum pid_type type, struct pid_namespace *ns) {
 	struct pid_va *pid_va;
 
 	for (int i = 0; i < MAX_PID_VA_ENTRIES; i++) {
@@ -34,21 +35,28 @@ int BPF_KPROBE(pid_nr_ns, struct pid *pid, struct pid_namespace *ns) {
 
 		if (pid_va) {
 			if (pid_va->VA) {
-				if (pid_va->flags == 0) {
-					// Call the kfunc to add the VA to the inactive list
-					if (bpf_insert_file_vaddr_into_inactive_list(pid_va->PID, pid_va->VA) == 0) {
+				if (pid_va->flags == 1) {
+					// Call the kfunc to add the VA to the active list
+					if (bpf_activate_file_vaddr(pid_va->PID, pid_va->VA) == 0) {
+						// bpf_printk("Inserted VA: %lx to active list for PID: %d\n", pid_va->VA, pid_va->PID);
+					} else {
+						bpf_printk("Failed to insert VA: %lx to active list for PID: %d\n", pid_va->VA, pid_va->PID);
+					}
+				} else if (pid_va->flags == 2) {
+					// Call the kfunc to move VA to inactive list
+					if (bpf_deactivate_file_vaddr(pid_va->PID, pid_va->VA) == 0) {
 						// bpf_printk("Inserted VA: %lx to inactive list for PID: %d\n", pid_va->VA, pid_va->PID);
 					} else {
-						// bpf_printk("Failed to insert VA: %lx to inactive list for PID: %d\n", pid_va->VA, pid_va->PID);
-					}
-				} else if (pid_va->flags == 1) {
+						bpf_printk("Failed to insert VA: %lx to inactive list for PID: %d\n", pid_va->VA, pid_va->PID);
+					}	
+				} else if (pid_va->flags == 3) {
 					// Call the kfunc to pin the VA
 					if (bpf_pin_file_vaddr(pid_va->PID, pid_va->VA) == 0) {
 						// bpf_printk("Pinned VA: %lx for PID: %d\n", pid_va->VA, pid_va->PID);
 					} else {
 						bpf_printk("Failed to pin VA: %lx for PID: %d\n", pid_va->VA, pid_va->PID);
 					}	
-				} else if (pid_va->flags == 2) {
+				} else if (pid_va->flags == 4) {
 					// Call the kfunc to unpin the VA
 					if (bpf_unpin_file_vaddr(pid_va->PID, pid_va->VA) == 0) {
 						// bpf_printk("Unpinned VA: %lx for PID: %d\n", pid_va->VA, pid_va->PID);
