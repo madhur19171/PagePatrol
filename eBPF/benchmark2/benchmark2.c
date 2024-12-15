@@ -16,7 +16,8 @@ struct {
 } pid_va_map SEC(".maps");
 
 // Declare the kfunc
-extern int bpf_insert_file_vaddr_into_inactive_list(int pid, unsigned long vaddr) __ksym;
+extern int bpf_deactivate_file_vaddr(int pid, unsigned long vaddr) __ksym;
+extern int bpf_activate_file_vaddr(int pid, unsigned long vaddr) __ksym;
 extern int bpf_pin_file_vaddr(int pid, unsigned long vaddr) __ksym;
 extern int bpf_unpin_file_vaddr(int pid, unsigned long vaddr) __ksym;
 
@@ -43,11 +44,18 @@ int BPF_KPROBE(pid_nr_ns, struct pid *pid, struct pid_namespace *ns) {
 
 		if (pid_va) {
 			if (pid_va->flags == 0) {
-				bpf_printk("Receied endpoint evict\n");
-				bpf_insert_file_vaddr_into_inactive_list(pid_va->PID, pid_va->VA);
+				// bpf_printk("Receied endpoint evict\n");
+				if (bpf_deactivate_file_vaddr(pid_va->PID, pid_va->VA) == 0) {
+				} else {
+					bpf_printk("Failed to insert VA: %lx to inactive list for PID: %d\n", pid_va->VA, pid_va->PID);
+				}
 			} else if (pid_va->flags == 1) {
 				bpf_printk("Receied endpoint pin\n");
-				bpf_pin_file_vaddr(pid_va->PID, pid_va->VA);
+				if (bpf_pin_file_vaddr(pid_va->PID, pid_va->VA) == 0) {
+				} else {
+					bpf_printk("Failed to pin VA: %lx for PID: %d\n", pid_va->VA, pid_va->PID);
+				}
+
 			} else if (pid_va->flags == 2) {
 				bpf_printk("Receied endpoint unpin\n");
 			} else if (pid_va->flags == 3) {

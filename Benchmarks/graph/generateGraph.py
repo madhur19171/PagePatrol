@@ -1,6 +1,6 @@
 import networkx as nx
 
-def generate_social_media_graph(num_nodes, filename="graph.txt"):
+def generate_social_media_graph(num_nodes, filename="graph50.txt"):
     """
     Generates a graph that resembles social media connections.
     The graph will have a power-law degree distribution.
@@ -28,11 +28,11 @@ def generate_social_media_graph(num_nodes, filename="graph.txt"):
     #     plt.figure(figsize=(10, 8))
     #     nx.draw(graph, node_size=20, node_color='blue', edge_color='gray', with_labels=False)
     #     plt.title("Generated Social Media Graph")
-    #     plt.show()
+    #     plt.savefig("./figure.png")
     # except ImportError:
     #     print("Matplotlib is not installed. Skipping visualization.")
 
 # Example usage
 if __name__ == "__main__":
-    num_nodes = 1_000
+    num_nodes = 50
     generate_social_media_graph(num_nodes)

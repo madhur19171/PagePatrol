@@ -31,5 +31,5 @@ def plot_degree_distribution(edge_list_file):
 
 # Example usage
 if __name__ == "__main__":
-    edge_list_file = "graph.txt"
+    edge_list_file = "graphSmall.txt"
     plot_degree_distribution(edge_list_file)
