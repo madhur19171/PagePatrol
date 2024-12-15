@@ -1,6 +1,10 @@
 #!/bin/bash
 
+sudo blockdev --setra 0 /dev/nvme0n1
+
 sudo sync    # Write back data to disk
 echo 3 | sudo tee /proc/sys/vm/drop_caches      # Clear the Page Cache
 
-sudo ./microbenchmark config.cfg
+sleep 3
+
+sudo ./microLOG configLOG.cfg

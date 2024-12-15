@@ -2,6 +2,6 @@
 
 while true; do
   clear
-  vmtouch -f -v bigfile
+  vmtouch -f -v /mnt/NVMe/bigfile1
   sleep 0.5s
 done

@@ -63,7 +63,6 @@ void closeLogFile() {
     }
 }
 
-
 // Base class for access patterns
 class AccessPattern {
 public:
@@ -82,13 +81,13 @@ public:
     }
 
     void execute(char* mapped_file, size_t num_pages) override {
-
-        // we assume the disk is divided in 4 equal segments
-        // so we start at the first quarter until the end
-        size_t start_i = (num_pages / 4) + 1;
-
-        for (size_t i = start_i; i < num_pages - 1; i += gap) {
+        size_t start_i = (num_pages / 3);
+        for (size_t i = start_i; i < num_pages; i += gap) {
             mapped_file[i * PAGE_SIZE] = (mapped_file[i * PAGE_SIZE] + 1) % 256;
+
+            if (pagePatrolEnable) {
+                mark_va_for_eviction(&mapped_file[i * PAGE_SIZE]);
+            }
         }
     }
 };
@@ -128,7 +127,7 @@ public:
                 mapped_file[i * PAGE_SIZE] = (mapped_file[i * PAGE_SIZE] + 1) % 256;
 
                 if (pagePatrolEnable) {
-                    mark_va_for_activation(&mapped_file[i * PAGE_SIZE]);
+                    // mark_va_for_activation(&mapped_file[i * PAGE_SIZE]);
                 }
             }
         }
@@ -146,16 +145,13 @@ public:
     }
 
     void execute(char* mapped_file, size_t num_pages) override {
+        // size_t small_region_pages = (num_pages * region_size) / 100;
 
-        // again, we assume that the disk is divided in 4,
-        // and here we only access the first quarter 
-        size_t small_region_pages = num_pages / 4;
+        size_t start_i = (num_pages / 3);
 
         for (size_t i = 0; i < repeats; ++i) {
-
-            size_t random_page = rand() % small_region_pages;
+            size_t random_page = rand() % start_i;
             mapped_file[random_page * PAGE_SIZE] = (mapped_file[random_page * PAGE_SIZE] + 1) % 256;
-
             if (pagePatrolEnable) {
                 pin_va(&mapped_file[random_page * PAGE_SIZE]);
             }
